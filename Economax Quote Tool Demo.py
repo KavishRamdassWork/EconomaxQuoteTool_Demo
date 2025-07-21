@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import *
 from tkinter.ttk import *
 import re
+import math
 import os
 
 # Get the directory of the current Python script
@@ -53,7 +54,7 @@ def File_dialog():
                                         filetypes=(("xlsx files", "*.xlsx"),("All Files", "*.*")))
     label_file["text"] = filename
     return None
-    
+
 def Load_excel_data():
     File_dialog()
     MemberList()
@@ -73,7 +74,7 @@ def Load_excel_data():
     label_file.config(text = "Load successful")
     
     print(pricedf.head())
-    
+
 def getCustomerList():
     global CIDList
     CIDList = Customerdf.iloc[:,0]
@@ -90,7 +91,7 @@ def getCustomerList():
         CString = CID + " - " + CName
         
         CList.append(CString)
-    
+
 def Load_Customer_excel_data():
     File_dialog()
 
@@ -111,13 +112,22 @@ def Load_Customer_excel_data():
     
     label_file.config(text = "Load successful")
     print(Customerdf.head())
-      
+
 def Save_Excel():
     global df
-    file = filedialog.asksaveasfilename(defaultextension = ".xlsx")
-    df.to_excel(str(file))
-    label_file.config(text = "File saved")
+    global K8df
+    global quote_weight_df
     
+    ConvertToK8()
+    CreateWeightDF()
+    
+    CombinedDF = CombineDataFrames(df, K8df)
+    CombinedDF = CombineDataFrames(CombinedDF, quote_weight_df)
+    
+    file = filedialog.asksaveasfilename(defaultextension = ".xlsx")
+    CombinedDF.to_excel(str(file))
+    label_file.config(text = "File saved")
+
 def clear_data():
     tv1.delete(*tv1.get_children())
     pass
@@ -162,7 +172,7 @@ def MemberList():
     
     global weightpm76
     weightpm76 = float(SHS76df.iloc[0,2])
-     
+
 def rafter_choice_selected(event):
     # Get the selected value from RafterChoice
     selected_rafter_choice = MountVar.get()
@@ -173,7 +183,7 @@ def rafter_choice_selected(event):
     
     for option in rafter_length_options[selected_rafter_choice]:
         RafterChoiceOp['menu'].add_command(label=option, command=tk._setit(RaftVar, option))
-    
+
 def getMount():
     global Mount
     global MountS
@@ -289,6 +299,8 @@ def getInputs():
     global SteelRate
     SteelRate = float(SteelRateE.get())
     
+    getSmalls()
+    
 def getRaftChoice():
     global RafterLChosen
     global Rafterdf
@@ -378,8 +390,8 @@ def ClampCalc():
         InterClamps = ((RailMult*(pHor - 1)))*sysnum
         
 
-    AddEntry("LM-EC35-RNW", EndClamps, 0)
-    AddEntry("LM-IC35-GP1-RNW", InterClamps, 0)
+    AddEntry("LM-EC35-RNW", round_up(EndClamps * SmallSmalls), 0)
+    AddEntry("LM-IC35-GP1-RNW", round_up(InterClamps * SmallSmalls), 0)
     
 def split_value(value):
     # Calculate the larger part
@@ -415,7 +427,7 @@ def getPurlins():
     maxnum = 39
     curnum = 0
 
-    PurlinL = CalcPurlinL + 200
+    PurlinL = CalcPurlinL + 300
     global PurlinLMin
     #PurlinLMin = PurlinL
     #PurlinLCalc = PurlinL
@@ -452,29 +464,30 @@ def getPurlins():
                     L3num = k*RailMult*sysnum 
                     PurlinLMint = PurlinLCalc
                     
-    PurlinLMin = Purlin6200 + PurlinLMint
+    #PurlinLMin = Purlin6200 + PurlinLMint
+    PurlinLMin  = PurlinL
     L0num = L6200num*RailMult*sysnum
     
     if(L0num>0):
-        AddEntry("LM-R112-W-6200", L0num, 0)
+        AddEntry("LM-R112-W-6200", round_up(L0num * SuppSmalls), 0)
     
     L1num =  L1numt
     
     if(L1num>0):
-        AddEntry("LM-R112-W-5250", L1num, 0)
+        AddEntry("LM-R112-W-5250", round_up(L1num * SuppSmalls), 0)
     
     if(L2num>0):
-        AddEntry("LM-R112-W-4400", L2num, 0)
+        AddEntry("LM-R112-W-4400", round_up(L2num * SuppSmalls), 0)
     
     if(L3num>0):
-        AddEntry("LM-R112-W-3300", L3num, 0)
+        AddEntry("LM-R112-W-3300", round_up(L3num * SuppSmalls), 0)
     
-    PurlinSplicersNum = L0num + L1num + L2num + L3num - (RailMult * sysnum)
+    PurlinSplicersNum = round_up((L0num + L1num + L2num + L3num - (RailMult * sysnum)) * SuppSmalls)
     AddEntry("LM-RS-I-R112-W-300", PurlinSplicersNum, 0)
     
         
     StitchingScrews = 18*(PurlinSplicersNum)
-    AddEntry("FS-S-22X6-C4", StitchingScrews, 0)
+    AddEntry("FS-S-22X6-C4", round_up(StitchingScrews * SmallSmalls), 0)
    
     PurlinSuppString = "Supplied Purlin Length: " + str(PurlinLMin) + "mm"
     PurlinLabel.config(text = PurlinSuppString)
@@ -596,12 +609,12 @@ def getPurlins():
     #Adding Purlin to Rafter Connectors
     global PRC
     totalrails = RailMult
-    PRC = ((totalrails * SupportLegsC)*4)*sysnum
+    PRC = round_up(((totalrails * SupportLegsC)*4)*sysnum * SmallSmalls)
     
     if(RafterType == 'R138 Rafter'):
         PRCCode = "LMK-PRC-38"
         AddEntry(PRCCode, PRC, 0)
-        CAPM8x20 = PRC
+        CAPM8x20 = round_up(PRC * SmallSmalls)
         AddEntry("FS-CAP-M8X20", CAPM8x20, 0)
         FWM8 = 2 * CAPM8x20
         AddEntry("FS-FW-M8", FWM8, 0)
@@ -631,7 +644,7 @@ def getPurlins():
     SupportString = "5m bays: " + str(bays5mcalc) + " 2.5m bays: " + str(bays2p5mcalc)
     SupportSLabel.config(text = SupportString)
 
-    PurlinSuppString = "Supplied Purlin Length: " + str(PurlinLMin) + "mm"
+    PurlinSuppString = "Structure Length: " + str(PurlinLMin) + "mm"
     PurlinLabel.config(text = PurlinSuppString)
     
     SupportLegsStr = "Number of Support Legs per structure: " + str(SupportLegsC)
@@ -642,7 +655,7 @@ def getPurlins():
     
     selection = "Calculated Rafter length: "+str(CalcRafterL)
     CalcRaftLabel.config(text = selection)
-       
+
 def get_last_set_of_numbers(input_string):
     # Find all sequences of digits in the input string
     matches = re.findall(r'\d+', input_string)
@@ -658,7 +671,7 @@ def secondRafterEntry():
     RaftStr2 = Rafterdf['Rafter Code'].tolist()
     RaftVar2.set(RaftStr2[0])
     RafterChoice2Op = tk.OptionMenu(InputFrame, RaftVar2, *RaftStr2)
-    RafterChoice2Op.grid(row = 9, column = 3, padx = 5, pady = 5)
+    RafterChoice2Op.grid(row = 10, column = 3, padx = 5, pady = 5)
     
 def RafterEntry(quantity):
     global df
@@ -741,10 +754,12 @@ def MountSupp():
     global RafterDescr
     global RafterCode
     
-    RafterQuantity = SupportLegs
+    RafterQuantity = round_up(SupportLegs * SuppSmalls)
     
     RafterEntry(RafterQuantity)
 
+    SupportLegs = round_up(SupportLegs * SuppSmalls)
+    
     global FPOhang
     FPOhang = 500
         
@@ -817,7 +832,7 @@ def MountSupp():
             KneeBracesqty = KneeBraces * SupportLegs
             AddEntry("LM-CP-SB-MILL-L", KneeBracesqty, 1500)
             
-            FSHBM16x150 = KneeBracesqty * 1
+            FSHBM16x150 = round_up(KneeBracesqty * 1 * SmallSmalls)
             AddEntry("FS-HB-M16X150", FSHBM16x150, 0)
             FSFWM16 = FSHBM16x150 * 2
             AddEntry("FS-FW-M16", FSFWM16, 0)
@@ -829,7 +844,7 @@ def MountSupp():
             KneeBraceRLC = KneeBracesqty
             
         #Adding the RLCs
-        RLCqty = RLCMult * SupportLegs + KneeBraceRLC
+        RLCqty = round_up((RLCMult * SupportLegs + KneeBraceRLC) * ConSmalls)
         AddEntry("LM-CP-RLC-1", RLCqty, 0)
         
     elif(RafterType == "R138 Rafter"):
@@ -885,17 +900,17 @@ def MountSupp():
         
         if(KneeBraces > 0):    
             KneeBracesqty = KneeBraces * SupportLegs
-            AddEntry("LM-SB-L", KneeBracesqty, 1500)
+            AddEntry("LM-SB-L", round_up(KneeBracesqty * SuppSmalls), 1500)
             
             FSHBM12x110KB = KneeBracesqty * 2
             
             KneeBraceRLC = KneeBracesqty
             
         #Adding the RLCs
-        RLCqty = RLCMult * SupportLegs + KneeBraceRLC
-        AddEntry("LM-CP-RLC-R138", RLCqty, 0)
+        RLCqty = round_up((RLCMult * SupportLegs + KneeBraceRLC) * ConSmalls)
+        AddEntry("LM-CP-RLC-R138", RLCqty , 0)
         
-        FSHBM12x110KB = RLCMult * SupportLegs + FSHBM12x110KB
+        FSHBM12x110KB = round_up((RLCMult * SupportLegs + FSHBM12x110KB) * SmallSmalls)
         AddEntry("FS-HB-M12x110", FSHBM12x110KB, 0)
         FSFWM12 = FSHBM12x110KB * 2
         AddEntry("FS-FW-M12", FSFWM12, 0)
@@ -904,7 +919,7 @@ def MountSupp():
         FSNM12 = FSHBM12x110KB
         AddEntry("FS-N-M12", FSNM12, 0)
         
-        FSCAPM8x20 = RLCqty * 6
+        FSCAPM8x20 = round_up(RLCqty * 6 * SmallSmalls)
         AddEntry("FS-CAP-M8X20", FSCAPM8x20, 0)
         FSFWM8 = FSCAPM8x20 * 2
         AddEntry("FS-FW-M8", FSFWM8, 0)
@@ -916,7 +931,7 @@ def MountSupp():
         
     #Calculating Purlin End Caps
     PurECs = RailMult * 2 * sysnum
-    AddEntry("LM-R112-W-PEC", PurECs, 0)
+    AddEntry("LM-R112-W-PEC", round_up(PurECs * SmallSmalls), 0)
         
     #Calculating Rafter End Caps
     RaftECs = 2 * SupportLegs
@@ -924,13 +939,13 @@ def MountSupp():
         RECCode = "LM-R138-REC"
     else:
         RECCode = "LM-CP-REC"
-    AddEntry(RECCode, RaftECs, 0)
+    AddEntry(RECCode, round_up(RaftECs * SmallSmalls), 0)
         
     #Adding Stitching Screws for End Caps
     ECStitchScr = (PurECs + RaftECs) * 2
-    AddEntry("FS-S-22X6-C4", ECStitchScr, 0)
+    AddEntry("FS-S-22X6-C4", round_up(ECStitchScr * SmallSmalls), 0)
     
-    FSTRM16x200 = RLCMult * 4 * SupportLegs
+    FSTRM16x200 = round_up(RLCMult * 4 * SupportLegs * SmallSmalls)
     AddEntry("FS-TR-M16x200-HDG", FSTRM16x200, 0)
     
     FSFWM16 = FSTRM16x200 * 2
@@ -946,20 +961,20 @@ def MountSupp():
 
     #Adding the 6m support bars for the cross-bracing    
     
-    AddEntry("LM-SB-6000", NumberOfCrossBraces, 0)
+    AddEntry("LM-SB-6000", round_up(NumberOfCrossBraces * SuppSmalls), 0)
     
     if(RafterType == 'R138 Rafter'):
-        FSHBM12x110KB = NumberOfCrossBraces
-        AddEntry("FS-HB-M12x110", FSHBM12x110KB, 0)
-        FSFWM12 = FSHBM12x110KB * 2
-        AddEntry("FS-FW-M12", FSFWM12, 0)
-        FSSWM12 = FSHBM12x110KB
-        AddEntry("FS-SW-M12", FSSWM12, 0)
-        FSNM12 = FSHBM12x110KB
-        AddEntry("FS-N-M12", FSNM12, 0)
+        FSHBM16x150 = round_up(NumberOfCrossBraces * SmallSmalls)
+        AddEntry("FS-HB-M16X150", FSHBM16x150, 0)
+        FSFWM16 = FSHBM16x150 * 2
+        AddEntry("FS-FW-M16", FSFWM16, 0)
+        FSSWM16 = FSHBM16x150
+        AddEntry("FS-SW-M16", FSSWM16, 0)
+        FSNM16 = FSHBM16x150
+        AddEntry("FS-N-M16", FSNM16, 0)
 
     elif(RafterType == 'R162 Rafter'):
-        FSHBM16x150 = NumberOfCrossBraces
+        FSHBM16x150 = round_up(NumberOfCrossBraces * SmallSmalls)
         AddEntry("FS-HB-M16X150", FSHBM16x150, 0)
         FSFWM16 = FSHBM16x150 * 2
         AddEntry("FS-FW-M16", FSFWM16, 0)
@@ -968,13 +983,13 @@ def MountSupp():
         FSNM16 = FSHBM16x150
         AddEntry("FS-N-M16", FSNM16, 0)
         
-    TTC90 = NumberOfCrossBraces
+    TTC90 = round_up(NumberOfCrossBraces * ConSmalls)
     AddEntry("LMK-TTC90-CBC", TTC90, 0)
     
-    FP90 = NumberOfCrossBraces
+    FP90 = round_up(NumberOfCrossBraces * ConSmalls)
     AddEntry("LM-FP-90", FP90, 0)
     
-    FSTRM12x160 = FP90 * 2
+    FSTRM12x160 = round_up(FP90 * 2 * SmallSmalls)
     AddEntry("FS-TR-M12X160", FSTRM12x160, 0)
     FSFWM12 = FSTRM12x160
     AddEntry("FS-FW-M12", FSFWM12, 0)
@@ -984,7 +999,7 @@ def MountSupp():
     #adding IKA
     IKA70007 = (FSTRM16x200 + FSTRM12x160)//20 + 1
     AddEntry("IKA-70007", IKA70007, 0)
-               
+
 def replace_first_l_with_numbers(input_str, replacement_numbers):
     count = 0
     result = ''
@@ -1048,6 +1063,200 @@ def getprice(code, quantity, length):
     
     return description, price, discprice, totalprice
 
+def extract_economax_length(text):
+    match = re.search(r'LENGTH:\s*(\d+)', text)
+    if match:
+        return int(match.group(1))
+    return None
+
+def extract_length(s: str) -> int:
+    
+    if("Carport Support Bar" in s):
+        match = re.search(r'\d+x(\d+)mm', s)
+
+    else:
+        match = re.search(r'\d+x\d+x(\d+)mm', s)
+        
+    if match:
+        return int(match.group(1))
+    raise ValueError("Length not found in string")    
+    
+def getStdSupportBarLength(Description):
+    
+    length = extract_length(Description)
+    
+    if("Carport Support Bar" in Description):
+        SBLengthArray = [1075, 1100, 1180, 1265, 1300, 1360, 1370, 1410, 1450, 1500, 
+                         1620, 1690, 1710, 1740, 1780, 2130, 2250, 2280, 2300, 2320, 
+                         2440, 2480, 2510, 2530, 2580, 2700, 2750, 2930, 2980, 3390, 
+                         3400, 3425, 3440, 3497, 3580, 3610, 3670, 3680, 3715, 3730, 
+                         3820, 3905, 3940, 3945, 3990, 4000, 4020, 4050, 4180, 4270, 
+                         4320, 4360, 4420, 4580, 4760, 6000]
+    else:
+        SBLengthArray = [450, 530, 550, 590, 615, 1500, 1550, 1560, 1740, 1800, 
+                         1815, 1870, 1875, 1960, 2525, 2540, 2610, 2615, 2670, 2710, 
+                         2795, 2820, 2840, 2890, 3000, 3340, 5000, 6000]
+    
+    if (length <= SBLengthArray[0]):
+        return SBLengthArray[0]
+    
+    else:
+        for i in range(1, len(SBLengthArray)):
+            if length <= SBLengthArray[i] and length > SBLengthArray[i-1]:
+                return SBLengthArray[i]
+
+def AddK8Entry(code, quantity):
+    global K8df
+    
+    NewEntry = pd.DataFrame({"Code": [code],
+                             "Quantity": [str(quantity)]})
+    K8df = pd.concat([K8df, NewEntry])
+
+def ConvertToK8():
+    global K8df
+    
+    K8df = pd.DataFrame(columns=['Code', 'Quantity'])
+    
+    K8Convertdf = pd.read_excel("Old and New Codes.xlsx")
+
+    Oldcodedf = K8Convertdf.loc[:, ['Old Code']]
+    Oldcodedf = Oldcodedf.dropna()
+    OldcodeList = Oldcodedf.iloc[:,0].tolist()
+    
+    Newcodedf = K8Convertdf.loc[:, ['New Code']]
+    Newcodedf = Newcodedf.dropna()
+    NewcodeList = Newcodedf.iloc[:,0].tolist()
+    
+    QuoteCodesdf = df.loc[:, ['Code']]
+    QuoteCodesdf = QuoteCodesdf.dropna()
+    QuoteCodes = QuoteCodesdf.iloc[:,0].tolist()
+    
+    QuoteDescdf = df.loc[:, ['Description']]
+    QuoteDescdf = QuoteDescdf.dropna()
+    QuoteDescs = QuoteDescdf.iloc[:,0].tolist() 
+    
+    QuoteQuantitiesdf = df.loc[:, ['Quantity']]
+    QuoteQuantitiesdf = QuoteQuantitiesdf.dropna()
+    QuoteQuantities = QuoteQuantitiesdf.iloc[:,0].tolist()
+    
+    for i in range(0, len(QuoteCodes) - 1):
+        for j in range(0, len(OldcodeList) - 1):
+            
+            if (QuoteCodes[i] == "LM-SB-L"):
+                length = getStdSupportBarLength(QuoteDescs[i])
+                StdSuppBarCode = "LM-SB-" + str(length)
+                QuoteCodes[i] = StdSuppBarCode
+                
+            elif (QuoteCodes[i] == "LM-CP-SB-MILL-L"):
+                length = getStdSupportBarLength(QuoteDescs[i])
+                if (length == 6000):
+                    StdSuppBarCode = "LM-CP-SB-6000"
+                else:
+                    StdSuppBarCode = "LM-CP-SB-MILL-" + str(length)
+                QuoteCodes[i] = StdSuppBarCode 
+                     
+            if (QuoteCodes[i] == OldcodeList[j]):
+                
+                AddK8Entry(NewcodeList[j], QuoteQuantities[i])
+
+def LoadWeights():
+    global Weightdf
+    
+    Weightdf = pd.read_excel("Inventory Volume & weight.xlsx")
+    Weightdf = Weightdf.iloc[8:, 0:3].reset_index(drop=True)
+    Weightdf.columns = Weightdf.iloc[0]
+    Weightdf = Weightdf.iloc[1:, :].reset_index(drop=True)
+    Weightdf = Weightdf.iloc[:, [0, 2]]
+    Weightdf = Weightdf.dropna()
+    
+    global WeightCode
+    global Weights
+    WeightCode = Weightdf.iloc[:,0].tolist()
+    Weights = Weightdf.iloc[:,1].tolist()
+
+def getWeight(code, description, quantity):
+    global WeightCode
+    global Weights
+    
+    for i in range(0, len(WeightCode) - 1):
+        if ("LM-CP-EC-" in code):
+            Length = extract_economax_length(description) #not dividing by 1000 because the weightpm is kg/m and the weights are provided in grams
+                
+            if Length is None:
+                print("Length not found in description: ", description)
+                
+            if("100" in code):
+                weight = round(weightpm100 * Length)
+            elif("76" in code):
+                weight = round(weightpm76 * Length)
+            else:
+                print("Unknown code for Economax Support: ", code)
+                weight = 0
+                
+        elif (code == WeightCode[i]):
+            if (code == "LM-SB-L"):
+                Length = extract_length(description)/1000
+                weight = round(Weights[i] * Length)
+            elif (code == "LM-CP-SB-MILL-L"):
+                Length = extract_length(description)/1000
+                weight = round(Weights[i] * Length)
+            else:
+                weight = Weights[i]
+            break
+        else:
+            weight = 0
+    
+    TotWeight = weight * int(quantity)
+    TotWeight = round(float(TotWeight))
+            
+    return weight, TotWeight
+
+def AddWeightEntry(weight, TotWeight):
+    global quote_weight_df
+    
+    NewEntry = pd.DataFrame({"Unit Weight [g]": [float(weight)],
+                             "Total Weight [g]": [float(TotWeight)]})
+    quote_weight_df = pd.concat([quote_weight_df, NewEntry])
+
+def CreateWeightDF():
+    LoadWeights()
+    
+    global df
+    global Weightdf
+    
+    # Create a new DataFrame with the same index as df
+    global quote_weight_df
+    quote_weight_df = pd.DataFrame(columns=['Unit Weight [g]', 'Total Weight [g]'])
+    
+    for i in range(1, len(df) - 1):
+        code = df.iloc[i]['Code']
+        description = df.iloc[i]['Description']
+        quantity = df.iloc[i]['Quantity']
+        
+        weight, TotWeight = getWeight(code, description, quantity)
+        
+        # Add the weights to the new DataFrame
+        AddWeightEntry(weight, TotWeight)
+    
+    #Adding total weight of the order    
+    OrderWeight = (quote_weight_df['Total Weight [g]'].sum())/1000
+    OrderWeight = round(float(OrderWeight), 3)
+    OrderWeight = str(OrderWeight) + " kg"
+    #AddWeightEntry("Total weight of the order", OrderWeight)
+    NewEntry = pd.DataFrame({"Unit Weight [g]": ["Total weight of the order"],
+                             "Total Weight [g]": [str(OrderWeight)]})
+    quote_weight_df = pd.concat([NewEntry, quote_weight_df])
+    
+def CombineDataFrames(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+    global df
+    global K8df
+    
+    # Combine the two DataFrames
+    df1 = df1.reset_index(drop=True)
+    df2 = df2.reset_index(drop=True)
+    
+    return pd.concat([df1, df2], axis=1, ignore_index=False)
+
 def AddEntry(code, quantity, length):
     global df
     global discountp
@@ -1062,7 +1271,7 @@ def AddEntry(code, quantity, length):
                             "Discount Price": [discprice],
                             "Total": [total]})
     df = pd.concat([df, NewEntry])
-       
+
 def Calculations():
     debug = "Lol"
     debugLabel.config(text = debug)
@@ -1111,7 +1320,7 @@ def updateListBox(data):
     # Add Clients to list box
     for item in data:
         ClientListBox.insert(END, item)
-        
+
 #Update entry box with listbox clicked
 def fillout(e):
     #delete whatever is in the entry box
@@ -1119,7 +1328,7 @@ def fillout(e):
     
     # Add clicked list item to entry box
     CCodeE.insert(0, ClientListBox.get(ACTIVE))
-    
+
 # Create function to check entry vs listbox
 def check(e):
     # grab what was typed
@@ -1135,7 +1344,7 @@ def check(e):
                 data.append(item)
     
     updateListBox(data)
-            
+
 def ProjectInfo():
     # Toplevel object which will 
     # be treated as a new window
@@ -1204,7 +1413,7 @@ def ProjectInfo():
     
     PIButton = tk.Button(ButtonFrame, text = "Capture Project Information", command = lambda: getProjectInfo())
     PIButton.grid(row = 0, column = 0, padx = 5, pady = 5)
-    
+
 def getProjectInfo():
     
     global transaction
@@ -1243,7 +1452,7 @@ def getProjectInfo():
     Sodcust = 'CASH'
     
     newWindow.destroy()
-    
+
 def CreateSageImport():
     global df
     
@@ -1327,7 +1536,7 @@ def Save_CSV():
     file = filedialog.asksaveasfilename(defaultextension = ".csv")
     merged_df.to_csv(str(file), index=False)
     label_file.config(text = "File saved")
-    
+
 root = tk.Tk()
 root.geometry("1380x750")
 root.title("Economax Quote Tool (Use at your own risk)")
@@ -1352,7 +1561,7 @@ label_file.grid(row = 1, column = 2, padx = 5, pady = 5)
 debugLabel = tk.Label(InputFrame, text = "Lol")
 debugLabel.grid(row = 1, column = 5, padx = 5, pady = 5)
 
-SupportLabel = tk.Label(InputFrame, text = "Please email kavish@lumaxenergy.com to report any bugs.")
+SupportLabel = tk.Label(InputFrame, text = "This is a simple demo.")
 SupportLabel.grid(row = 1, column = 6, padx = 5, pady = 5)
 
 TableNumberLabel = tk.Label(master = InputFrame, text = "Number of Tables:")
@@ -1381,7 +1590,7 @@ OrientationLabel = tk.Label(InputFrame, text = "Panel Orientation:")
 OrientationLabel.grid(row = 3, column = 1, padx = 5, pady = 5)
 OrientationVar = tk.StringVar()
 OrientationList = ['Portrait', 'Landscape']
-OrientationVar.set(OrientationList[1])
+OrientationVar.set(OrientationList[0])
 OrientationOp = tk.OptionMenu(InputFrame, OrientationVar, *OrientationList)
 OrientationOp.grid(row = 3, column = 2, padx=5, pady=5)
 
